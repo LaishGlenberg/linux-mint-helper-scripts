@@ -5,7 +5,7 @@ Small personal helper scripts for this machine (`/home/lg`).
 | Script | What it does |
 | --- | --- |
 | `pi-md.sh` | Interactive picker: choose a pi session project + session, export it to Markdown via `pi-session-to-md`. |
-| `recent.sh` | Interactive picker: choose a recent VS Code folder and open it in a new window. |
+| `recent.sh` | Interactive picker: choose one or more recent VS Code folders (e.g. `3,4,5`) and open them in new windows. |
 | `autohide.sh` | Autohide helper (see file header). |
 
 ## pi-md.sh

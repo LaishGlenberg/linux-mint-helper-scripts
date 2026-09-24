@@ -83,12 +83,25 @@ for f in "${folders[@]}"; do
 done
 echo
 
-read -rp "Open which project? " choice
+read -rp "Open which project(s)? (e.g. 3,4,5) " choice
 
-if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#folders[@]}" ]; then
-    echo "Invalid selection."
+# Accept one or more numbers separated by commas and/or spaces.
+selected=()
+for n in ${choice//,/ }; do
+    if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#folders[@]}" ]; then
+        echo "Invalid selection: $n"
+        read -rp "Press Enter to close..."
+        exit 1
+    fi
+    selected+=("${folders[n-1]}")
+done
+
+if [ "${#selected[@]}" -eq 0 ]; then
+    echo "No selection."
     read -rp "Press Enter to close..."
     exit 1
 fi
 
-code -n "${folders[choice-1]}"
+for path in "${selected[@]}"; do
+    code -n "$path"
+done
