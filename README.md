@@ -5,7 +5,7 @@ Small personal helper scripts for this machine (`/home/lg`).
 | Script | What it does |
 | --- | --- |
 | `pi-md.sh` | Interactive picker: choose a pi session project + session, export it to Markdown via `pi-session-to-md`. |
-| `recent.sh` | Interactive picker: choose one or more recent VS Code folders (e.g. `3,4,5` + Enter) or open one instantly with `Shift`+number. |
+| `recent.sh` | Interactive picker: choose one or more recent VS Code folders (e.g. `3,4,5` + Enter), open one instantly with `Shift`+number, or search with letters + Enter (each whitespace/comma-separated term opens its best match). |
 | `autohide.sh` | Autohide helper (see file header). |
 | `badge-helper.sh` | Insert npm version, downloads, and CI badges under a README's H1 title from `package.json`. |
 
@@ -113,3 +113,28 @@ The converter is looked up in this order: `$PI_SESSION_TO_MD`, then
   active projects appear first; sessions are ordered the same way. When a list is
   longer than its limit, the first 10 shown are separated from a longer run by a
   blank line.
+
+## recent.sh
+
+Interactive picker for recently opened VS Code folders (read from
+`~/.config/Code/User/workspaceStorage`), newest first. At the prompt:
+
+- **Numbers** select projects (`3,4,5`), opening each in a new window.
+- **`Shift`+number** (`Shift+2` → `@`) opens that project instantly.
+- **Letters** start a search. The query is split on whitespace and commas, and
+  each term is matched against the paths from right to left — the match closest
+  to the folder name wins. Every term opens its own best match, so `scripts api`
+  or `scripts,api` opens two projects at once. Terms with no match are reported
+  and skipped.
+
+`RECENT_LIMIT` (default 20) controls how many entries are listed.
+
+## Tests
+
+`tests/recent_test.sh` runs `recent.sh` under a pseudo-terminal with a fake
+workspace and a stubbed `code`, covering search matching and numeric selection.
+Requires util-linux `script`; it exits 0 with `SKIP` when that is missing.
+
+```bash
+tests/recent_test.sh
+```

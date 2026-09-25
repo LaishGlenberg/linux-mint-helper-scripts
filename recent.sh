@@ -13,6 +13,11 @@
 #
 # At the prompt you can type one or more numbers (e.g. "3,4,5") and press Enter,
 # or hold Shift and press a number (Shift+2 -> @) to open that project instantly.
+#
+# Typing letters (no digits) and pressing Enter searches instead: the query is
+# split into terms on whitespace and/or commas, and each term is matched against
+# the paths from right to left (the match closest to the folder name wins).
+# Every term opens its own best match, so "scripts api" opens two projects.
 
 WS="$HOME/.config/Code/User/workspaceStorage"
 LIMIT="${RECENT_LIMIT:-20}"
@@ -117,6 +122,53 @@ else
 fi
 
 # Accept one or more numbers separated by commas and/or spaces.
+#
+# Letters without digits enter search mode instead: split the query on
+# whitespace and/or commas, then open the best match for each term.
+if [[ -n "$choice" && "$choice" =~ [[:alpha:]] && ! "$choice" =~ [0-9] ]]; then
+    selected=()
+    while IFS= read -r match; do
+        [ -n "$match" ] && selected+=("$match")
+    done < <(
+        printf '%s\n' "${folders[@]}" | python3 -c '
+import re, sys
+
+terms = [t for t in re.split(r"[,\s]+", sys.argv[1].lower()) if t]
+paths = [line.rstrip("\n") for line in sys.stdin if line.strip()]
+
+seen = set()
+for term in terms:
+    best = None
+    best_score = None
+    for path in paths:
+        hay = path.lower()
+        idx = hay.rfind(term)          # rightmost occurrence
+        if idx == -1:
+            continue
+        # Fewer characters after the match wins; shorter path breaks ties.
+        score = (len(hay) - (idx + len(term)), len(hay))
+        if best_score is None or score < best_score:
+            best_score = score
+            best = path
+    if best is None:
+        print("No match for: %s" % term, file=sys.stderr)
+    elif best not in seen:
+        seen.add(best)
+        print(best)
+' "$choice"
+    )
+    if [ "${#selected[@]}" -eq 0 ]; then
+        echo "No project matches: $choice"
+        read -rp "Press Enter to close..."
+        exit 1
+    fi
+    for match in "${selected[@]}"; do
+        echo "Opening: $match"
+        code -n "$match"
+    done
+    exit 0
+fi
+
 selected=()
 for n in ${choice//,/ }; do
     if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#folders[@]}" ]; then
