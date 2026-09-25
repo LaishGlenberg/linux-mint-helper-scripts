@@ -5,8 +5,25 @@ Small personal helper scripts for this machine (`/home/lg`).
 | Script | What it does |
 | --- | --- |
 | `pi-md.sh` | Interactive picker: choose a pi session project + session, export it to Markdown via `pi-session-to-md`. |
-| `recent.sh` | Interactive picker: choose one or more recent VS Code folders (e.g. `3,4,5`) and open them in new windows. |
+| `recent.sh` | Interactive picker: choose one or more recent VS Code folders (e.g. `3,4,5` + Enter) or open one instantly with `Shift`+number. |
 | `autohide.sh` | Autohide helper (see file header). |
+| `badge-helper.sh` | Insert npm version, downloads, and CI badges under a README's H1 title from `package.json`. |
+
+## badge-helper.sh
+
+Run it from a package directory (the one containing `README.md` and
+`package.json`) to drop the three standard shields.io badges just below the
+README title:
+
+```bash
+cd ~/extensions/pi-parse-commands
+badge-helper.sh
+```
+
+It reads the package name and scope from `package.json` and the GitHub
+owner/repo from `repository.url` (falling back to `git remote origin`). Badges
+are replaced rather than duplicated, so it is safe to re-run after renaming or
+re-scoping a package. Requires `jq`.
 
 ## pi-md.sh
 

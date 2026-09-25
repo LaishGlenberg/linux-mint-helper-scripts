@@ -10,6 +10,9 @@
 # Optionally set RECENT_LIMIT to change how many entries are listed (default 10).
 # When more than 10 entries are listed, a blank line separates the first 10
 # from the rest.
+#
+# At the prompt you can type one or more numbers (e.g. "3,4,5") and press Enter,
+# or hold Shift and press a number (Shift+2 -> @) to open that project instantly.
 
 WS="$HOME/.config/Code/User/workspaceStorage"
 LIMIT="${RECENT_LIMIT:-20}"
@@ -83,7 +86,35 @@ for f in "${folders[@]}"; do
 done
 echo
 
-read -rp "Open which project(s)? (e.g. 3,4,5) " choice
+printf "Open which project(s)? (e.g. 3,4,5, or Shift+number for instant open) "
+IFS= read -rn1 first
+
+# Shift+<digit> on a US keyboard emits the symbol above the number key.
+# Map those to the digit so a single keypress opens immediately.
+instant=""
+case "$first" in
+    '!') instant=1  ;;
+    '@') instant=2  ;;
+    '#') instant=3  ;;
+    '$') instant=4  ;;
+    '%') instant=5  ;;
+    '^') instant=6  ;;
+    '&') instant=7  ;;
+    '*') instant=8  ;;
+    '(') instant=9  ;;
+    ')') instant=10 ;;
+esac
+
+if [ -n "$instant" ]; then
+    # Instant single open - no Enter needed.
+    printf '\n'
+    choice="$instant"
+else
+    # Otherwise read the rest of the line (plain digits, commas, spaces).
+    IFS= read -r rest
+    printf '\n'
+    choice="${first}${rest}"
+fi
 
 # Accept one or more numbers separated by commas and/or spaces.
 selected=()
