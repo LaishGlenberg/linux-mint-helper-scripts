@@ -48,6 +48,8 @@ pi-md.sh                      # interactive (5 newest dirs, 5 newest sessions)
 pi-md.sh --no-thinking        # extra flags are forwarded to pi-session-to-md
 pi-md.sh --timestamps --include-bash
 pi-md.sh -o /tmp/transcript.md
+pi-md.sh -c 15                # auto-delete the .md after 15 minutes (cron)
+pi-md.sh --cron               # ... after PI_MD_CRON_MINUTES (default 10)
 PI_MD_OPEN=0 pi-md.sh          # don't open VS Code afterwards
 PI_DIR_LIMIT=10 PI_SESSION_LIMIT=20 pi-md.sh   # wider lists
 PI_DIR_LIMIT=0 pi-md.sh       # 0 = list everything
@@ -65,13 +67,22 @@ Turn the editor off with `PI_MD_OPEN=0`, or point it elsewhere with
 `PI_MD_OPENER=code-insiders`, `PI_MD_OPENER=xdg-open`). A missing opener only
 warns; the Markdown is still written.
 
+Pass `-c/--cron` to have the exported file clean itself up. With a value it
+uses that many minutes (`-c 15`, `--cron=15`, `-c15`); bare `-c`/`--cron` uses
+`PI_MD_CRON_MINUTES` (default **10**). The script installs a one-shot user
+crontab entry that deletes the file and removes its own line again, leaving the
+rest of your crontab untouched. cron only fires on whole minutes, so the file
+can disappear shortly before the full delay is up. `--cron` is ignored when
+nothing is written (stdout mode); a missing `crontab` only warns.
+
 Type `q` at either prompt to cancel.
 
 ### Options
 
 All arguments are forwarded to `pi_session_to_md.py` (`--no-thinking`,
 `--mode branch`, `--leaf`, `--include-bash`, `--timestamps`,
-`--no-group-turns`, `-o/--output`). Its full help:
+`--no-group-turns`, `-o/--output`) except `-c/--cron`, which is consumed by
+`pi-md.sh` itself. Its full help:
 
 ```bash
 python3 ~/pi-session-to-md/pi_session_to_md.py --help
@@ -90,6 +101,7 @@ python3 ~/pi-session-to-md/pi_session_to_md.py --help
 | `PI_MD_SNIPPET` | `60` | Preview length (chars) for session entries; `0` disables. |
 | `PI_MD_OPEN` | `1` | Open the written `.md` when done; `0` = don't. |
 | `PI_MD_OPENER` | `code` | Editor command used to open it. |
+| `PI_MD_CRON_MINUTES` | `10` | Default minutes for a bare `-c/--cron`. |
 
 Limits must be non-negative integers; anything else is rejected with a clear
 error before any listing happens.
@@ -137,4 +149,15 @@ Requires util-linux `script`; it exits 0 with `SKIP` when that is missing.
 
 ```bash
 tests/recent_test.sh
+```
+
+`tests/pi_md_test.sh` does the same for `pi-md.sh`'s `-c/--cron` flag, using a
+fake session tree plus stubbed converter, `crontab`, and `date`. It checks flag
+parsing (default/explicit/attached forms), that the cron flag is not forwarded
+to the converter, that cron-related cleanup is installed safely, and — by
+executing the scheduled command — that it deletes the file and removes only its
+own crontab line. Also requires util-linux `script`.
+
+```bash
+tests/pi_md_test.sh
 ```

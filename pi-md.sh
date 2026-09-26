@@ -16,6 +16,8 @@
 #   pi-md.sh --timestamps --include-bash
 #   pi-md.sh -o /tmp/transcript.md      # explicit output path
 #   PI_MD_STDOUT=1 pi-md.sh             # stream markdown to stdout instead of a file
+#   pi-md.sh -c 15                      # auto-delete the .md after 15 minutes (cron)
+#   pi-md.sh --cron                     # ... after PI_MD_CRON_MINUTES (default 10)
 #
 # Env:
 #   PI_SESSIONS_DIR    session root           (default: ~/.pi/agent/sessions)
@@ -26,6 +28,7 @@
 #   PI_MD_SNIPPET      preview length in chars (default: 60, 0 disables)
 #   PI_MD_OPEN         open the .md in an editor when done (default: 1, 0 = no)
 #   PI_MD_OPENER       editor command used to open it (default: code)
+#   PI_MD_CRON_MINUTES default minutes for -c/--cron (default: 10)
 #
 # Lists are always ordered newest-first; the limits only trim the tail, so set
 # the limit to 0 (or a bigger number) to reach older projects/sessions.
@@ -69,6 +72,36 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
 fi
 
 [ -d "$SESSIONS_DIR" ] || die "session directory not found: $SESSIONS_DIR"
+
+# ---------------------------------------------------------------------------
+# Options: -c/--cron schedules a one-shot cron entry that deletes the exported
+# Markdown after N minutes (default PI_MD_CRON_MINUTES, else 10). It is consumed
+# here; every other argument is forwarded to pi_session_to_md.py.
+# ---------------------------------------------------------------------------
+CRON_MINUTES="${PI_MD_CRON_MINUTES:-10}"
+cron_enabled=false
+forward=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -c|--cron)
+            cron_enabled=true
+            # Optional value: consume the next token unless it looks like a flag.
+            if [ "$#" -ge 2 ] && [ "${2#-}" = "$2" ]; then
+                CRON_MINUTES="$2"
+                shift
+            fi
+            ;;
+        --cron=*) cron_enabled=true; CRON_MINUTES="${1#--cron=}" ;;
+        -c[0-9]*) cron_enabled=true; CRON_MINUTES="${1#-c}" ;;
+        *)        forward+=("$1") ;;
+    esac
+    shift
+done
+
+if [ "$cron_enabled" = true ]; then
+    [[ "$CRON_MINUTES" =~ ^[0-9]+$ ]] && [ "$CRON_MINUTES" -ge 1 ] ||
+        die "--cron expects a positive number of minutes (got '$CRON_MINUTES')"
+fi
 
 # ---------------------------------------------------------------------------
 # Locate the converter: env override, repo script, venv entry point, PATH.
@@ -230,6 +263,42 @@ open_output() {
     return 0
 }
 
+# Install a one-shot cron entry that deletes $1 after $2 minutes and then
+# removes its own crontab line. cron fires at whole minutes, so the file can
+# disappear shortly before the full delay is up.
+schedule_delete() {
+    local path="$1" minutes="$2"
+
+    if ! command -v crontab >/dev/null 2>&1; then
+        echo "pi-md: warning: crontab not found; '$path' will not be auto-deleted" >&2
+        return 0
+    fi
+
+    local target min hour dom month
+    if ! target="$(date -d "+${minutes} minutes" +'%M %H %d %m')"; then
+        echo "pi-md: warning: could not compute deletion time; '$path' will not be auto-deleted" >&2
+        return 0
+    fi
+    read -r min hour dom month <<<"$target"
+
+    # Unique marker so the job removes only its own crontab line.
+    local tag="pi-md-expire-$$-$(date +%s)"
+    # Single-quote the path for /bin/sh (cron's shell), escaping embedded quotes.
+    local qpath="'${path//\'/\'\\\'\'}'"
+    # Delete the file, then drop our line from the crontab. The cleanup reads the
+    # current crontab into a temp file first so a failed `crontab -l` can never
+    # wipe the user's crontab with an empty one.
+    local cmd="rm -f -- ${qpath}; t=\$(mktemp) && crontab -l >\"\$t\" 2>/dev/null && grep -vF '${tag}' \"\$t\" | crontab -; rm -f \"\$t\""
+    local line="${min} ${hour} ${dom} ${month} * ${cmd} # ${tag}"
+
+    if ! { crontab -l 2>/dev/null; echo "$line"; } | crontab -; then
+        echo "pi-md: warning: could not install cron entry; '$path' will not be auto-deleted" >&2
+        return 0
+    fi
+
+    echo "Auto-delete: $path in ${minutes}m (cron ${min} ${hour} ${dom}/${month})"
+}
+
 # ---------------------------------------------------------------------------
 # 1) pick a session project directory
 # ---------------------------------------------------------------------------
@@ -303,7 +372,7 @@ SEL_FILE="${file_paths[file_idx-1]}"
 # "-o -" and PI_MD_STDOUT=1 mean stream to stdout, so there is no file to open.
 out_path=""
 next_is_out=false
-for arg in "$@"; do
+for arg in "${forward[@]}"; do
     if [ "$next_is_out" = true ]; then
         out_path="$arg"
         next_is_out=false
@@ -330,7 +399,7 @@ short="${short:0:8}"
 proj="$(basename "$SEL_CWD")"
 proj="${proj//[^A-Za-z0-9._-]/_}"
 
-args=("$SEL_FILE" "${@}")
+args=("$SEL_FILE" "${forward[@]}")
 if [ "$writes_file" = true ] && [ -z "$out_path" ]; then
     mkdir -p "$OUTDIR"
     out_path="$OUTDIR/${proj}_${stamp}_${short}.md"
@@ -348,4 +417,9 @@ if [ "$writes_file" = true ]; then
     echo
     echo "Wrote: $out_path"
     open_output "$out_path"
+    if [ "$cron_enabled" = true ]; then
+        schedule_delete "$out_path" "$CRON_MINUTES"
+    fi
+elif [ "$cron_enabled" = true ]; then
+    echo "pi-md: --cron ignored (no file written)" >&2
 fi
