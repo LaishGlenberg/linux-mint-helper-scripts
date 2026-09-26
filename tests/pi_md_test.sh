@@ -65,18 +65,20 @@ chmod +x "$T/bin/convert" "$T/bin/crontab" "$T/bin/date"
 
 # run <input> [pi-md args...] -> fills CRON, CONVERT_ARGS, OUT_FILE, RUN_STATUS
 # CONVERT_ARGS is the converter argv joined with '|' and wrapped in '|' so exact
-# token checks are possible (e.g. "|-c|").
+# token checks are possible (e.g. "|-c|"). Set RUN_CWD to control the directory
+# the script runs in (default: $T).
 run() {
     local input="$1"; shift
+    local workdir="${RUN_CWD:-$T}"
     : >"$T/crontab"
     : >"$T/convert.log"
     rm -rf "$T/out"; mkdir -p "$T/out"
-    printf '%s' "$input" | \
+    ( cd "$workdir" && printf '%s' "$input" | \
         HOME="$T/home" PATH="$T/bin:$PATH" \
         PI_SESSION_TO_MD="$T/bin/convert" \
         PI_MD_OUTDIR="$T/out" PI_MD_OPEN=0 \
         CRON_FILE="$T/crontab" CONVERT_LOG="$T/convert.log" \
-        script -q -e -c "bash '$PI_MD' $*" /dev/null >/dev/null 2>&1
+        script -q -e -c "bash '$PI_MD' $*" /dev/null >/dev/null 2>&1 )
     RUN_STATUS=$?
     CRON="$(cat "$T/crontab")"
     CONVERT_ARGS="|$(tr '\n' '|' <"$T/convert.log")"
@@ -152,6 +154,19 @@ if [ ! -e "$OUT_FILE" ]; then ok "cron run deletes the exported file";
 else bad "cron run deletes the exported file" "$OUT_FILE still exists"; fi
 if [ "$CRON_AFTER" = "# keep me" ]; then ok "cron run removes only its own entry";
 else bad "cron run removes only its own entry" "crontab is now: $CRON_AFTER"; fi
+
+# 9) A relative -o path must be anchored before scheduling. cron runs jobs with
+#    cwd=$HOME, so a bare 'rel.md' silently deletes the wrong file (or nothing);
+#    this was the real-world bug that left prev-chat.md behind.
+RUN_CWD="$T" run "$SELECT" -o rel.md -c
+RUN_CWD=
+has "relative -o is anchored to an absolute path" "$CRON" "rm -f -- '$T/rel.md'"
+hasnt "relative -o is not left bare in the cron command" "$CRON" "rm -f -- 'rel.md'"
+printf '# keep me\n%s\n' "$CRON" >"$T/crontab"
+cmd="${CRON#* * * * * }"
+( cd "$HOME" && PATH="$T/bin:$PATH" CRON_FILE="$T/crontab" sh -c "$cmd" )
+if [ ! -e "$T/rel.md" ]; then ok "relative -o file is deleted when cron runs from \$HOME";
+else bad "relative -o file is deleted when cron runs from \$HOME" "$T/rel.md still exists"; fi
 
 echo
 echo "passed: $pass  failed: $fail"

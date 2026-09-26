@@ -269,6 +269,14 @@ open_output() {
 schedule_delete() {
     local path="$1" minutes="$2"
 
+    # cron runs jobs with cwd=$HOME, so a relative -o path (e.g. `-o out.md`)
+    # would resolve against the wrong directory and silently delete nothing.
+    # Anchor it to the directory the file was written in (the caller's cwd).
+    case "$path" in
+        /*) ;;
+        *)  path="$PWD/$path" ;;
+    esac
+
     if ! command -v crontab >/dev/null 2>&1; then
         echo "pi-md: warning: crontab not found; '$path' will not be auto-deleted" >&2
         return 0

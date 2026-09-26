@@ -71,8 +71,10 @@ Pass `-c/--cron` to have the exported file clean itself up. With a value it
 uses that many minutes (`-c 15`, `--cron=15`, `-c15`); bare `-c`/`--cron` uses
 `PI_MD_CRON_MINUTES` (default **10**). The script installs a one-shot user
 crontab entry that deletes the file and removes its own line again, leaving the
-rest of your crontab untouched. cron only fires on whole minutes, so the file
-can disappear shortly before the full delay is up. `--cron` is ignored when
+rest of your crontab untouched. A relative `-o` path is resolved against the
+directory you ran the script from (cron itself runs jobs from `$HOME`, so it
+would otherwise delete the wrong file). cron only fires on whole minutes, so the
+file can disappear shortly before the full delay is up. `--cron` is ignored when
 nothing is written (stdout mode); a missing `crontab` only warns.
 
 Type `q` at either prompt to cancel.
@@ -156,7 +158,8 @@ fake session tree plus stubbed converter, `crontab`, and `date`. It checks flag
 parsing (default/explicit/attached forms), that the cron flag is not forwarded
 to the converter, that cron-related cleanup is installed safely, and — by
 executing the scheduled command — that it deletes the file and removes only its
-own crontab line. Also requires util-linux `script`.
+own crontab line (including a relative `-o` path run from a different cwd). Also
+requires util-linux `script`.
 
 ```bash
 tests/pi_md_test.sh
