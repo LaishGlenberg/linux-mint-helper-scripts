@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# recent.sh - pick a recently opened VS Code folder and open it in a new window.
+# recent.sh - pick a recently opened VS Code folder or xed file and open it.
 # Intended to be bound to a Linux Mint keyboard shortcut.
 #
 # Hotkey command (Linux Mint / Cinnamon, System Settings > Keyboard > Shortcuts >
@@ -7,23 +7,26 @@
 #     /home/lg/scripts/recent.sh
 #     gnome-terminal -- /home/lg/scripts/recent.sh
 #
-# Optionally set RECENT_LIMIT to change how many entries are listed (default 10).
-# When more than 10 entries are listed, a blank line separates the first 10
-# from the rest.
-#
-# At the prompt you can type one or more numbers (e.g. "3,4,5") and press Enter,
-# or hold Shift and press a number (Shift+2 -> @) to open that project instantly.
+# Starts in VS Code mode (recent folders). At the prompt you can type one or
+# more numbers (e.g. "3,4,5") and press Enter, or hold Shift and press a number
+# (Shift+2 -> @) to open that item instantly.
 #
 # Typing letters (no digits) and pressing Enter searches instead: the query is
 # split into terms on whitespace and/or commas, and each term is matched against
-# the paths from right to left (the match closest to the folder name wins).
-# Every term opens its own best match, so "scripts api" opens two projects.
+# the paths from right to left (the match closest to the folder/file name wins).
+# Every term opens its own best match, so "scripts api" opens two items.
+#
+# Typing "xed", "note" or "notepad" switches to xed mode, which lists files xed
+# recently opened (from the GTK recent list) and opens them with xed. Typing
+# "code" or "vscode" switches back to VS Code mode. Each mode has its own list
+# but shares all of the selection/search controls.
 #
 # If a search matches nothing (or a selection is invalid) you are simply asked
 # again - the window stays open for a retry.
-
-WS="$HOME/.config/Code/User/workspaceStorage"
-LIMIT="${RECENT_LIMIT:-20}"
+#
+# Optionally set RECENT_LIMIT to change how many entries are listed (default
+# 20). When more than 10 entries are listed, a blank line separates the first
+# 10 from the rest.
 
 # When launched from a Cinnamon keyboard shortcut there is no TTY, so the prompt
 # would be invisible. Relaunch ourselves inside a terminal window (guarded so
@@ -41,173 +44,38 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
     exit 1
 fi
 
-# Build a most-recent-first list of unique folder paths.
-mapfile -t folders < <(
-python3 - "$WS" <<'PY'
-import json, os, sys, glob, urllib.parse
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/collect.sh
+. "$SCRIPT_DIR/lib/collect.sh"
+# shellcheck source=lib/picker.sh
+. "$SCRIPT_DIR/lib/picker.sh"
 
-ws = os.path.expanduser(sys.argv[1])
-entries = []
-for d in glob.glob(os.path.join(ws, "*")):
-    wj = os.path.join(d, "workspace.json")
-    if not os.path.isfile(wj):
-        continue
-    try:
-        with open(wj) as f:
-            data = json.load(f)
-    except Exception:
-        continue
-    uri = data.get("folder") or data.get("workspace")
-    if not uri or not uri.startswith("file://"):
-        continue
-    path = urllib.parse.unquote(uri[len("file://"):])
-    entries.append((os.path.getmtime(d), path))
+# Load each list once; switching modes just reuses the arrays.
+mapfile -t vscode_folders < <(collect_vscode_folders)
+mapfile -t xed_files < <(collect_xed_files)
 
-entries.sort(reverse=True)
-seen = set()
-for _, path in entries:
-    if path not in seen:
-        seen.add(path)
-        print(path)
-PY
-)
+PICKER_LIMIT="${RECENT_LIMIT:-20}"
 
-if [ "${#folders[@]}" -eq 0 ]; then
-    echo "No recent VS Code projects found."
-    read -rp "Press Enter to close..."
-    exit 1
-fi
-
-if [ "${#folders[@]}" -gt "$LIMIT" ]; then
-    folders=("${folders[@]:0:$LIMIT}")
-fi
-
-echo "Recent VS Code projects:"
-i=1
-for f in "${folders[@]}"; do
-    # Visually separate the first 10 entries from everything after them.
-    if [ "$i" -eq 11 ]; then
-        echo
-    fi
-    printf "  %2d) %s\n" "$i" "$f"
-    i=$((i + 1))
-done
-echo
-
-# Prompt in a loop so a failed search or bad selection asks again instead of
-# forcing the window to be closed. EOF (or a read error) ends the loop.
+mode=vscode
 while true; do
-    printf "Open which project(s)? (e.g. 3,4,5, or Shift+number for instant open) "
-    if ! IFS= read -rn1 first; then
-        printf '\n'
-        exit 1
-    fi
-    # Ctrl-D / end of input: leave quietly instead of looping forever.
-    if [ "$first" = $'\004' ]; then
-        printf '\n'
-        exit 1
-    fi
-
-    # Shift+<digit> on a US keyboard emits the symbol above the number key.
-    # Map those to the digit so a single keypress opens immediately.
-    instant=""
-    case "$first" in
-        '!') instant=1  ;;
-        '@') instant=2  ;;
-        '#') instant=3  ;;
-        '$') instant=4  ;;
-        '%') instant=5  ;;
-        '^') instant=6  ;;
-        '&') instant=7  ;;
-        '*') instant=8  ;;
-        '(') instant=9  ;;
-        ')') instant=10 ;;
+    case "$mode" in
+        vscode)
+            declare -A PICKER_KEYWORDS=([xed]=xed [note]=xed [notepad]=xed)
+            picker_run vscode_folders "Recent VS Code projects:" "project" code -n
+            rc=$?
+            ;;
+        xed)
+            declare -A PICKER_KEYWORDS=([code]=vscode [vscode]=vscode [folders]=vscode)
+            picker_run xed_files "Recent xed files:" "file" xed
+            rc=$?
+            ;;
     esac
 
-    if [ -n "$instant" ]; then
-        # Instant single open - no Enter needed.
-        printf '\n'
-        choice="$instant"
-    else
-        # Otherwise read the rest of the line (plain digits, commas, spaces).
-        IFS= read -r rest || rest=""
-        printf '\n'
-        choice="${first}${rest}"
-    fi
-
-    # Empty input: just ask again.
-    if [ -z "$choice" ]; then
+    # Exit status 3 means a keyword asked us to switch lists; loop with the new
+    # mode. Anything else (opened, EOF) is final.
+    if [ "$rc" -eq 3 ]; then
+        mode="$PICKER_MODE"
         continue
     fi
-
-    # Accept one or more numbers separated by commas and/or spaces.
-    #
-    # Letters without digits enter search mode instead: split the query on
-    # whitespace and/or commas, then open the best match for each term.
-    if [[ "$choice" =~ [[:alpha:]] && ! "$choice" =~ [0-9] ]]; then
-        selected=()
-        while IFS= read -r match; do
-            [ -n "$match" ] && selected+=("$match")
-        done < <(
-            printf '%s\n' "${folders[@]}" | python3 -c '
-import re, sys
-
-terms = [t for t in re.split(r"[,\s]+", sys.argv[1].lower()) if t]
-paths = [line.rstrip("\n") for line in sys.stdin if line.strip()]
-
-seen = set()
-for term in terms:
-    best = None
-    best_score = None
-    for path in paths:
-        hay = path.lower()
-        idx = hay.rfind(term)          # rightmost occurrence
-        if idx == -1:
-            continue
-        # Fewer characters after the match wins; shorter path breaks ties.
-        score = (len(hay) - (idx + len(term)), len(hay))
-        if best_score is None or score < best_score:
-            best_score = score
-            best = path
-    if best is None:
-        print("No match for: %s" % term, file=sys.stderr)
-    elif best not in seen:
-        seen.add(best)
-        print(best)
-' "$choice"
-        )
-        if [ "${#selected[@]}" -eq 0 ]; then
-            echo "No project matches: $choice - try again."
-            continue
-        fi
-        for match in "${selected[@]}"; do
-            echo "Opening: $match"
-            code -n "$match"
-        done
-        exit 0
-    fi
-
-    selected=()
-    invalid=""
-    for n in ${choice//,/ }; do
-        if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#folders[@]}" ]; then
-            echo "Invalid selection: $n - try again."
-            invalid=1
-            break
-        fi
-        selected+=("${folders[n-1]}")
-    done
-    if [ -n "$invalid" ]; then
-        continue
-    fi
-
-    if [ "${#selected[@]}" -eq 0 ]; then
-        echo "No selection - try again."
-        continue
-    fi
-
-    for path in "${selected[@]}"; do
-        code -n "$path"
-    done
-    exit 0
+    exit "$rc"
 done

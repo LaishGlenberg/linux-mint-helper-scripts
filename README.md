@@ -5,7 +5,7 @@ Small personal helper scripts for this machine (`/home/lg`).
 | Script | What it does |
 | --- | --- |
 | `pi-md.sh` | Interactive picker: choose a pi session project + session, export it to Markdown via `pi-session-to-md`. |
-| `recent.sh` | Interactive picker: choose one or more recent VS Code folders (e.g. `3,4,5` + Enter), open one instantly with `Shift`+number, or search with letters + Enter (each whitespace/comma-separated term opens its best match). |
+| `recent.sh` | Interactive picker for recent items: choose one or more VS Code folders or xed files (e.g. `3,4,5` + Enter), open one instantly with `Shift`+number, or search with letters + Enter (each whitespace/comma-separated term opens its best match). Type `xed`/`note`/`notepad` to switch to xed files. |
 | `autohide.sh` | Autohide helper (see file header). |
 | `badge-helper.sh` | Insert npm version, downloads, and CI badges under a README's H1 title from `package.json`. |
 
@@ -130,25 +130,38 @@ The converter is looked up in this order: `$PI_SESSION_TO_MD`, then
 
 ## recent.sh
 
-Interactive picker for recently opened VS Code folders (read from
-`~/.config/Code/User/workspaceStorage`), newest first. At the prompt:
+Interactive picker for recently opened files, newest first. It starts in
+**VS Code mode**, listing folders read from `~/.config/Code/User/workspaceStorage`.
+At the prompt:
 
-- **Numbers** select projects (`3,4,5`), opening each in a new window.
-- **`Shift`+number** (`Shift+2` → `@`) opens that project instantly.
+- **Numbers** select items (`3,4,5`), opening each one.
+- **`Shift`+number** (`Shift+2` → `@`) opens that item instantly.
 - **Letters** start a search. The query is split on whitespace and commas, and
   each term is matched against the paths from right to left — the match closest
-  to the folder name wins. Every term opens its own best match, so `scripts api`
-  or `scripts,api` opens two projects at once. Terms with no match are reported
-  and skipped. If a search matches nothing (or a selection is invalid) you are
-  prompted again instead of the window closing, so you can retry.
+  to the file/folder name wins. Every term opens its own best match, so
+  `scripts api` or `scripts,api` opens two items at once. Terms with no match are
+  reported and skipped. If a search matches nothing (or a selection is invalid)
+  you are prompted again instead of the window closing, so you can retry.
+- **Keywords** switch lists: `xed`, `note`, or `notepad` move to **xed mode**,
+  which lists the files xed opened recently (read from the GTK recent list at
+  `~/.local/share/recently-used.xbel`, filtered to entries opened by xed) and
+  opens the chosen ones with `xed`. `code`, `vscode`, or `folders` switch back.
+  Both modes share the numbering, instant-open, and search controls.
 
-`RECENT_LIMIT` (default 20) controls how many entries are listed.
+`RECENT_LIMIT` (default 20) controls how many entries are listed in either mode.
+
+The picker and the history readers live in `lib/`, so both modes reuse the same
+interaction code: `lib/picker.sh` (render / select / search / keyword switching)
+and `lib/collect.sh` (`collect_vscode_folders`, `collect_xed_files`).
 
 ## Tests
 
 `tests/recent_test.sh` runs `recent.sh` under a pseudo-terminal with a fake
-workspace and a stubbed `code`, covering search matching and numeric selection.
-Requires util-linux `script`; it exits 0 with `SKIP` when that is missing.
+workspace (VS Code) and a fake GTK recent list (xed), stubbing the `code` and
+`xed` binaries, and covers search matching, numeric selection, keyword mode
+switching, and per-mode filtering. It also verifies that bookmarks from other
+applications are ignored and that the xed list falls back to the bookmark's
+group. Requires util-linux `script`; it exits 0 with `SKIP` when that is missing.
 
 ```bash
 tests/recent_test.sh
