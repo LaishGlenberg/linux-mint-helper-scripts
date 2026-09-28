@@ -5,7 +5,7 @@ Small personal helper scripts for this machine (`/home/lg`).
 | Script | What it does |
 | --- | --- |
 | `pi-md.sh` | Interactive picker: choose a pi session project + session, export it to Markdown via `pi-session-to-md`. |
-| `recent.sh` | Interactive picker for recent items: choose one or more VS Code folders or xed files (e.g. `3,4,5` + Enter), open one instantly with `Shift`+number, or search with letters + Enter (each whitespace/comma-separated term opens its best match). Type `xed`/`note`/`notepad` to switch to xed files. |
+| `recent.sh` | Interactive picker for recent items: choose one or more VS Code folders or xed files (e.g. `3,4,5` + Enter), open one instantly with `Shift`+number, or search with letters + Enter (each whitespace/comma-separated term opens its best match). Type `xed`/`note`/`notepad` to switch to xed files, where an unmatched search offers to create that file in Documents. |
 | `autohide.sh` | Autohide helper (see file header). |
 | `badge-helper.sh` | Insert npm version, downloads, and CI badges under a README's H1 title from `package.json`. |
 
@@ -147,8 +147,15 @@ At the prompt:
   `~/.local/share/recently-used.xbel`, filtered to entries opened by xed) and
   opens the chosen ones with `xed`. `code`, `vscode`, or `folders` switch back.
   Both modes share the numbering, instant-open, and search controls.
+- **Creating a file** is offered in xed mode only: if a search matches nothing,
+  you are asked whether to create that name as a new text file (a `.txt`
+  extension is added when the name has none) in your Documents folder and open it
+  with xed. Answer `y`, `yes`, or just press Enter to create it; `n` or `no`
+  returns to the prompt. VS Code mode keeps the plain retry.
 
 `RECENT_LIMIT` (default 20) controls how many entries are listed in either mode.
+`RECENT_DOCUMENTS` overrides the xed creation directory (default: the
+`xdg-user-dir DOCUMENTS` path, falling back to `~/Documents`).
 
 The picker and the history readers live in `lib/`, so both modes reuse the same
 interaction code: `lib/picker.sh` (render / select / search / keyword switching)
@@ -159,9 +166,10 @@ and `lib/collect.sh` (`collect_vscode_folders`, `collect_xed_files`).
 `tests/recent_test.sh` runs `recent.sh` under a pseudo-terminal with a fake
 workspace (VS Code) and a fake GTK recent list (xed), stubbing the `code` and
 `xed` binaries, and covers search matching, numeric selection, keyword mode
-switching, and per-mode filtering. It also verifies that bookmarks from other
-applications are ignored and that the xed list falls back to the bookmark's
-group. Requires util-linux `script`; it exits 0 with `SKIP` when that is missing.
+switching, per-mode filtering, and creating a new file from an unmatched search
+in xed mode. It also verifies that bookmarks from other applications are ignored
+and that the xed list falls back to the bookmark's group. Requires util-linux
+`script`; it exits 0 with `SKIP` when that is missing.
 
 ```bash
 tests/recent_test.sh

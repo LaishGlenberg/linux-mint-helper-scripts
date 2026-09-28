@@ -9,6 +9,8 @@
 #   * Shift+number (! @ # ...) opens that item instantly, no Enter needed
 #   * letters search the list; each comma/whitespace term opens its best match,
 #     matched from right to left so the file/folder name wins
+#   * with PICKER_NEW_DIR set, a search that finds nothing offers to create the
+#     named .txt file there (used by xed mode for brand new files)
 #   * mode keywords (e.g. "xed") switch the caller to another list
 #
 # Public entry point:
@@ -23,6 +25,8 @@
 #   Environment:
 #     PICKER_LIMIT     max entries to show (default 20, 0 = no limit)
 #     PICKER_KEYWORDS  associative array mapping a typed word -> mode id
+#     PICKER_NEW_DIR   when set, a letter search with no matches offers to
+#                      create the named .txt file in this directory (xed mode)
 #
 #   Returns:
 #     0  after opening the chosen item(s)
@@ -31,6 +35,9 @@
 
 # Safe default so picker_run can be used without an explicit keyword map.
 declare -A PICKER_KEYWORDS=()
+
+# Unset PICKER_NEW_DIR disables the create-on-unmatched-search prompt.
+PICKER_NEW_DIR="${PICKER_NEW_DIR:-}"
 
 # picker_match QUERY
 # Reads candidate paths from stdin (one per line) and prints the best match for
@@ -62,6 +69,55 @@ for term in terms:
         seen.add(best)
         print(best)
 ' "$1"
+}
+
+# picker_offer_create QUERY OPENER...
+# A letter search found nothing. Offer to create QUERY as a new text file in
+# PICKER_NEW_DIR and open it with OPENER. Enter/y/yes accepts, n/no declines.
+# Returns 0 when the file was created (and opened), 1 to return to the prompt.
+picker_offer_create() {
+    local query="$1"; shift
+    local -a opener=("$@")
+
+    # Trim surrounding whitespace, drop any directory part, and default to a
+    # .txt extension when the name has none.
+    local name="$query"
+    name="${name#"${name%%[![:space:]]*}"}"
+    name="${name%"${name##*[![:space:]]}"}"
+    name="${name##*/}"
+    case "$name" in
+        '') return 1 ;;
+        *.*) ;;
+        *)   name="$name.txt" ;;
+    esac
+
+    local target="$PICKER_NEW_DIR/$name"
+    local answer
+    while true; do
+        printf 'No file matches "%s". Create "%s"? [Y/n] ' "$query" "$target"
+        if ! IFS= read -r answer; then
+            printf '\n'
+            return 1
+        fi
+        printf '\n'
+        case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+            ''|y|yes) break ;;
+            n|no)    return 1 ;;
+            *)       echo "Please answer y, yes, n, no, or Enter for yes." ;;
+        esac
+    done
+
+    if ! mkdir -p "$PICKER_NEW_DIR"; then
+        echo "Cannot create directory: $PICKER_NEW_DIR" >&2
+        return 1
+    fi
+    if ! : >"$target"; then
+        echo "Cannot create file: $target" >&2
+        return 1
+    fi
+    echo "Created: $target"
+    "${opener[@]}" "$target"
+    return 0
 }
 
 # picker_render HEADER ENTRIES...
@@ -172,6 +228,12 @@ picker_run() {
                 [ -n "$match" ] && selected+=("$match")
             done < <(printf '%s\n' "${entries[@]}" | picker_match "$choice")
             if [ "${#selected[@]}" -eq 0 ]; then
+                # With a create directory configured (xed mode) offer to make
+                # the file instead of just retrying, so a brand new note can be
+                # typed straight into the picker.
+                if [ -n "${PICKER_NEW_DIR:-}" ] && picker_offer_create "$choice" "${opener[@]}"; then
+                    return 0
+                fi
                 echo "No $noun matches: $choice - try again."
                 continue
             fi

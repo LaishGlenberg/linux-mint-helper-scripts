@@ -21,6 +21,13 @@
 # "code" or "vscode" switches back to VS Code mode. Each mode has its own list
 # but shares all of the selection/search controls.
 #
+# In xed mode, searching for a name that is not in the list offers to create it
+# as a new text file in your Documents folder (a .txt extension is added when the
+# name has none) and opens it with xed. Answer y, yes, or just press Enter to
+# create it; n or no goes back to the prompt. VS Code mode is unchanged and just
+# asks again, since it cannot invent a project folder. Set RECENT_DOCUMENTS to
+# override the destination directory.
+#
 # If a search matches nothing (or a selection is invalid) you are simply asked
 # again - the window stays open for a retry.
 #
@@ -56,16 +63,35 @@ mapfile -t xed_files < <(collect_xed_files)
 
 PICKER_LIMIT="${RECENT_LIMIT:-20}"
 
+# Where xed mode creates a brand new file. RECENT_DOCUMENTS wins (mainly for
+# tests), otherwise ask xdg-user-dir and fall back to ~/Documents.
+documents_dir() {
+    if [ -n "${RECENT_DOCUMENTS:-}" ]; then
+        printf '%s\n' "$RECENT_DOCUMENTS"
+        return
+    fi
+    local dir=""
+    if command -v xdg-user-dir >/dev/null 2>&1; then
+        dir="$(xdg-user-dir DOCUMENTS 2>/dev/null)"
+    fi
+    if [ -z "$dir" ] || [ "$dir" = "$HOME" ]; then
+        dir="$HOME/Documents"
+    fi
+    printf '%s\n' "$dir"
+}
+
 mode=vscode
 while true; do
     case "$mode" in
         vscode)
             declare -A PICKER_KEYWORDS=([xed]=xed [note]=xed [notepad]=xed)
+            PICKER_NEW_DIR=""
             picker_run vscode_folders "Recent VS Code projects:" "project" code -n
             rc=$?
             ;;
         xed)
             declare -A PICKER_KEYWORDS=([code]=vscode [vscode]=vscode [folders]=vscode)
+            PICKER_NEW_DIR="$(documents_dir)"
             picker_run xed_files "Recent xed files:" "file" xed
             rc=$?
             ;;

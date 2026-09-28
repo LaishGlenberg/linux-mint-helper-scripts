@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Integration tests for recent.sh (search mode + numeric selection).
+# Integration tests for recent.sh (search mode + numeric selection + xed
+# create-on-miss).
 #
 # Runs the real script under a pseudo-terminal (util-linux `script`) with a
 # temporary fake workspaceStorage and a stubbed `code` binary, then asserts
@@ -128,6 +129,7 @@ run() {
             sleep 0.3
         done < <(printf '%s' "$1")
     } | HOME="$T" PATH="$T/bin:$PATH" CODE_LOG="$T/code.log" XED_LOG="$T/xed.log" \
+        RECENT_DOCUMENTS="$T/Documents" \
         script -q -e -c "bash '$RECENT'" /dev/null >/dev/null 2>&1 || true
     OUT="$(tr '\n' '|' <"$T/code.log")"
     XOUT="$(tr '\n' '|' <"$T/xed.log")"
@@ -155,6 +157,28 @@ check_xed() { # <name> <expected> <input>  (asserts the xed log instead)
         echo "FAIL - $1"
         echo "       expected: $2"
         echo "       actual:   $XOUT"
+        fail=$((fail + 1))
+    fi
+}
+
+check_exists() { # <name> <path>  (asserts the path was created)
+    if [ -f "$2" ]; then
+        echo "ok   - $1"
+        pass=$((pass + 1))
+    else
+        echo "FAIL - $1"
+        echo "       expected file: $2"
+        fail=$((fail + 1))
+    fi
+}
+
+check_absent() { # <name> <path>  (asserts the path was NOT created)
+    if [ ! -e "$2" ]; then
+        echo "ok   - $1"
+        pass=$((pass + 1))
+    else
+        echo "FAIL - $1"
+        echo "       unexpected file: $2"
         fail=$((fail + 1))
     fi
 }
@@ -229,6 +253,39 @@ check_xed "xed invalid selection retries" \
 check "code keyword switches back to VS Code" \
     "-n /home/lg/proj/api/src|" \
     $'xed\ncode\n1\n'
+
+# --- xed mode: create a brand new file on a miss --------------------------
+# An unmatched name in xed mode is offered for creation in Documents; a .txt
+# extension is appended and xed opens the new path.
+check_xed "xed miss offers to create a .txt file" \
+    "$T/Documents/newfile.txt|" \
+    $'xed\nnewfile\ny\n'
+check_exists "created .txt file is on disk" "$T/Documents/newfile.txt"
+
+# Enter (the empty answer) also means yes.
+check_xed "xed creation accepts Enter as yes" \
+    "$T/Documents/enter-name.txt|" \
+    $'xed\nenter-name\n\n'
+check_exists "Enter-created file is on disk" "$T/Documents/enter-name.txt"
+
+# The long form "yes" works and an explicit extension is preserved.
+check_xed "xed creation accepts yes and keeps extension" \
+    "$T/Documents/journal.md|" \
+    $'xed\njournal.md\nyes\n'
+check_exists "yes-created file is on disk" "$T/Documents/journal.md"
+
+# Declining returns to the prompt without creating anything.
+check_xed "xed creation declined returns to prompt" \
+    "/home/lg/work/group-only.txt|" \
+    $'xed\ndeclined-file\nno\n1\n'
+check_absent "declined file is not created" "$T/Documents/declined-file.txt"
+
+# A search that matches must not offer to create anything.
+check_absent "matched search creates no new file" "$T/Documents/notes.txt"
+
+# VS Code mode keeps retrying and never creates folders/files.
+check "vscode miss does not create" "" $'zzz\n'
+check_absent "vscode cannot create files" "$T/Documents/zzz.txt"
 
 echo
 echo "passed: $pass  failed: $fail"
