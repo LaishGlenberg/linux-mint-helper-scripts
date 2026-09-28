@@ -139,7 +139,8 @@ Interactive picker for recently opened VS Code folders (read from
   each term is matched against the paths from right to left — the match closest
   to the folder name wins. Every term opens its own best match, so `scripts api`
   or `scripts,api` opens two projects at once. Terms with no match are reported
-  and skipped.
+  and skipped. If a search matches nothing (or a selection is invalid) you are
+  prompted again instead of the window closing, so you can retry.
 
 `RECENT_LIMIT` (default 20) controls how many entries are listed.
 

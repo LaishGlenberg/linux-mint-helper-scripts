@@ -18,6 +18,9 @@
 # split into terms on whitespace and/or commas, and each term is matched against
 # the paths from right to left (the match closest to the folder name wins).
 # Every term opens its own best match, so "scripts api" opens two projects.
+#
+# If a search matches nothing (or a selection is invalid) you are simply asked
+# again - the window stays open for a retry.
 
 WS="$HOME/.config/Code/User/workspaceStorage"
 LIMIT="${RECENT_LIMIT:-20}"
@@ -91,46 +94,62 @@ for f in "${folders[@]}"; do
 done
 echo
 
-printf "Open which project(s)? (e.g. 3,4,5, or Shift+number for instant open) "
-IFS= read -rn1 first
+# Prompt in a loop so a failed search or bad selection asks again instead of
+# forcing the window to be closed. EOF (or a read error) ends the loop.
+while true; do
+    printf "Open which project(s)? (e.g. 3,4,5, or Shift+number for instant open) "
+    if ! IFS= read -rn1 first; then
+        printf '\n'
+        exit 1
+    fi
+    # Ctrl-D / end of input: leave quietly instead of looping forever.
+    if [ "$first" = $'\004' ]; then
+        printf '\n'
+        exit 1
+    fi
 
-# Shift+<digit> on a US keyboard emits the symbol above the number key.
-# Map those to the digit so a single keypress opens immediately.
-instant=""
-case "$first" in
-    '!') instant=1  ;;
-    '@') instant=2  ;;
-    '#') instant=3  ;;
-    '$') instant=4  ;;
-    '%') instant=5  ;;
-    '^') instant=6  ;;
-    '&') instant=7  ;;
-    '*') instant=8  ;;
-    '(') instant=9  ;;
-    ')') instant=10 ;;
-esac
+    # Shift+<digit> on a US keyboard emits the symbol above the number key.
+    # Map those to the digit so a single keypress opens immediately.
+    instant=""
+    case "$first" in
+        '!') instant=1  ;;
+        '@') instant=2  ;;
+        '#') instant=3  ;;
+        '$') instant=4  ;;
+        '%') instant=5  ;;
+        '^') instant=6  ;;
+        '&') instant=7  ;;
+        '*') instant=8  ;;
+        '(') instant=9  ;;
+        ')') instant=10 ;;
+    esac
 
-if [ -n "$instant" ]; then
-    # Instant single open - no Enter needed.
-    printf '\n'
-    choice="$instant"
-else
-    # Otherwise read the rest of the line (plain digits, commas, spaces).
-    IFS= read -r rest
-    printf '\n'
-    choice="${first}${rest}"
-fi
+    if [ -n "$instant" ]; then
+        # Instant single open - no Enter needed.
+        printf '\n'
+        choice="$instant"
+    else
+        # Otherwise read the rest of the line (plain digits, commas, spaces).
+        IFS= read -r rest || rest=""
+        printf '\n'
+        choice="${first}${rest}"
+    fi
 
-# Accept one or more numbers separated by commas and/or spaces.
-#
-# Letters without digits enter search mode instead: split the query on
-# whitespace and/or commas, then open the best match for each term.
-if [[ -n "$choice" && "$choice" =~ [[:alpha:]] && ! "$choice" =~ [0-9] ]]; then
-    selected=()
-    while IFS= read -r match; do
-        [ -n "$match" ] && selected+=("$match")
-    done < <(
-        printf '%s\n' "${folders[@]}" | python3 -c '
+    # Empty input: just ask again.
+    if [ -z "$choice" ]; then
+        continue
+    fi
+
+    # Accept one or more numbers separated by commas and/or spaces.
+    #
+    # Letters without digits enter search mode instead: split the query on
+    # whitespace and/or commas, then open the best match for each term.
+    if [[ "$choice" =~ [[:alpha:]] && ! "$choice" =~ [0-9] ]]; then
+        selected=()
+        while IFS= read -r match; do
+            [ -n "$match" ] && selected+=("$match")
+        done < <(
+            printf '%s\n' "${folders[@]}" | python3 -c '
 import re, sys
 
 terms = [t for t in re.split(r"[,\s]+", sys.argv[1].lower()) if t]
@@ -156,35 +175,39 @@ for term in terms:
         seen.add(best)
         print(best)
 ' "$choice"
-    )
-    if [ "${#selected[@]}" -eq 0 ]; then
-        echo "No project matches: $choice"
-        read -rp "Press Enter to close..."
-        exit 1
+        )
+        if [ "${#selected[@]}" -eq 0 ]; then
+            echo "No project matches: $choice - try again."
+            continue
+        fi
+        for match in "${selected[@]}"; do
+            echo "Opening: $match"
+            code -n "$match"
+        done
+        exit 0
     fi
-    for match in "${selected[@]}"; do
-        echo "Opening: $match"
-        code -n "$match"
+
+    selected=()
+    invalid=""
+    for n in ${choice//,/ }; do
+        if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#folders[@]}" ]; then
+            echo "Invalid selection: $n - try again."
+            invalid=1
+            break
+        fi
+        selected+=("${folders[n-1]}")
+    done
+    if [ -n "$invalid" ]; then
+        continue
+    fi
+
+    if [ "${#selected[@]}" -eq 0 ]; then
+        echo "No selection - try again."
+        continue
+    fi
+
+    for path in "${selected[@]}"; do
+        code -n "$path"
     done
     exit 0
-fi
-
-selected=()
-for n in ${choice//,/ }; do
-    if ! [[ "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "${#folders[@]}" ]; then
-        echo "Invalid selection: $n"
-        read -rp "Press Enter to close..."
-        exit 1
-    fi
-    selected+=("${folders[n-1]}")
-done
-
-if [ "${#selected[@]}" -eq 0 ]; then
-    echo "No selection."
-    read -rp "Press Enter to close..."
-    exit 1
-fi
-
-for path in "${selected[@]}"; do
-    code -n "$path"
 done

@@ -44,9 +44,18 @@ pass=0
 fail=0
 
 # run <input> -> populates $OUT with the recorded `code` invocations
+#
+# Input lines are fed one at a time with a short pause. `script` injects an EOF
+# character as soon as its own stdin closes, which can otherwise land in front
+# of buffered retry input and defeat the retry tests.
 run() {
     : >"$T/code.log"
-    printf '%s' "$1" | HOME="$T" PATH="$T/bin:$PATH" CODE_LOG="$T/code.log" \
+    {
+        while IFS= read -r line; do
+            printf '%s\n' "$line"
+            sleep 0.3
+        done < <(printf '%s' "$1")
+    } | HOME="$T" PATH="$T/bin:$PATH" CODE_LOG="$T/code.log" \
         script -q -e -c "bash '$RECENT'" /dev/null >/dev/null 2>&1 || true
     OUT="$(tr '\n' '|' <"$T/code.log")"
 }
@@ -83,8 +92,16 @@ check "multi-term search de-duplicates projects" \
 check "unmatched term is skipped" \
     "-n /home/lg/scripts|" \
     $'scripts zzz\n'
-# Search: no match opens nothing.
-check "search with no match is a no-op" \
+# Search: a failed search asks again instead of exiting - the retry opens.
+check "failed search retries" \
+    "-n /home/lg/scripts|" \
+    $'zzz\nscripts\n'
+# An invalid number also asks again rather than forcing a close.
+check "invalid selection retries" \
+    "-n /home/lg/proj/api/src|" \
+    $'99\n1\n'
+# End of input after a failed search exits instead of hanging.
+check "end of input exits quietly" \
     "" \
     $'zzz\n'
 # Numeric selection still works, one or many.
