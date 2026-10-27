@@ -1,0 +1,9 @@
+# demo.script - the sequence your README demo should show.
+# Blank lines and #comments are skipped. @sleep N adds extra wait.
+
+echo "step 1: hello from the demo"
+@sleep 1
+echo "step 2: a command with a pipe" | tr a-z A-Z
+@sleep 1
+echo "step 3: the working dir is $(basename "$PWD")"
+

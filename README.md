@@ -8,6 +8,7 @@ Small personal helper scripts for this machine (`/home/lg`).
 | `recent.sh` | Interactive picker for recent items: choose one or more VS Code folders or xed files (e.g. `3,4,5` + Enter), open one instantly with `Shift`+number, or search with letters + Enter (each whitespace/comma-separated term opens its best match). Type `xed`/`note`/`notepad` to switch to xed files, where an unmatched search offers to create that file in Documents. |
 | `autohide.sh` | Autohide helper (see file header). |
 | `badge-helper.sh` | Insert npm version, downloads, and CI badges under a README's H1 title from `package.json`. |
+| `cmd-replay.sh` | Replay a script of shell commands with timed pauses and screen clears, for recording terminal demos without typing by hand. |
 
 ## badge-helper.sh
 
@@ -24,6 +25,29 @@ It reads the package name and scope from `package.json` and the GitHub
 owner/repo from `repository.url` (falling back to `git remote origin`). Badges
 are replaced rather than duplicated, so it is safe to re-run after renaming or
 re-scoping a package. Requires `jq`.
+
+## cmd-replay.sh
+
+Plays a list of commands back in this terminal with a pause and a screen
+clear between each one, so a demo can be recorded instead of typed by hand.
+The sequence lives in a file, so re-recording it (after a UI change, say)
+costs one command instead of another performance:
+
+```bash
+./cmd-replay.sh demo.script            # 2 second pause between steps
+./cmd-replay.sh -p 2.5 -w 45 demo.script   # slower pauses, typed out
+./cmd-replay.sh -C demo.script         # keep scrollback instead of clearing
+```
+
+Each line of the script is a command, `#` comments and blank lines are
+skipped, and `@sleep N` adds an extra wait. Commands are `eval`'d in the
+script's own shell, so `cd` and `export` persist between steps (and `exit`
+ends the replay). See `demo.script` for a sample.
+
+Commands can also be piped in with `-` instead of a file. Use `-w MS` to type
+each command out at `MS` milliseconds per character, and `-e` to abort on the
+first non-zero exit. This only drives the terminal; it does not encode a gif,
+so pair it with a recorder.
 
 ## pi-md.sh
 
