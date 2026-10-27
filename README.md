@@ -36,13 +36,26 @@ costs one command instead of another performance:
 ```bash
 ./cmd-replay.sh demo.script            # 2 second pause between steps
 ./cmd-replay.sh -p 2.5 -w 45 demo.script   # slower pauses, typed out
+./cmd-replay.sh --pace 3 demo.script   # ~3s per step, no guessing
 ./cmd-replay.sh -C demo.script         # keep scrollback instead of clearing
 ```
 
 Each line of the script is a command, `#` comments and blank lines are
-skipped, and `@sleep N` adds an extra wait. Commands are `eval`'d in the
-script's own shell, so `cd` and `export` persist between steps (and `exit`
-ends the replay). See `demo.script` for a sample.
+skipped. Commands are `eval`'d in the script's own shell, so `cd` and `export`
+persist between steps (and `exit` ends the replay). See `demo.script` for a
+sample.
+
+Two directives adjust the timing around a command:
+
+- `@sleep N` waits `N` extra seconds at that point, leaving the screen as-is
+- `@pause N` replaces the pause after the command above it, so one slow step
+  does not force you to retune `-p` for the whole script
+
+`-p` is a fixed pause after every command. `--pace SEC` is the alternative:
+give each step a budget and the script waits only for the time the command
+itself did not use, so `npm install` gets no dead air while `git status` gets
+time to be read. No pause is added after the final command, so put a trailing
+`@sleep N` at the end of the script if the last screen should linger.
 
 Commands can also be piped in with `-` instead of a file. Use `-w MS` to type
 each command out at `MS` milliseconds per character, and `-e` to abort on the

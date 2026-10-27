@@ -1,9 +1,13 @@
 # demo.script - the sequence your README demo should show.
-# Blank lines and #comments are skipped. @sleep N adds extra wait.
+# Blank lines and #comments are skipped.
+#   @sleep N  wait N extra seconds here
+#   @pause N  make the pause after the command above N seconds
 
-echo "step 1: hello from the demo"
-@sleep 1
-echo "step 2: a command with a pipe" | tr a-z A-Z
-@sleep 1
-echo "step 3: the working dir is $(basename "$PWD")"
+dsearch "most recent world cup winner" lang:en -n 1
 
+dsearch fetch https://api-docs.deepseek.com/quick_start/pricing/ --clean
+
+dsearch "most cost effective AI agents" -n 1 --json -o output/result.json
+
+# holds the last screen; without it the script ends as soon as step 3 finishes
+@sleep 2
